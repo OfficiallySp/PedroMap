@@ -54,3 +54,26 @@ LoadTextures()
 if #animationTextures > 0 then
     animationTextures[1]:Show()
 end
+
+-- Add this near the top of your file, after creating animationFrame
+local minimapButton = CreateFrame("Button", "PedroMapMinimapButton", Minimap)
+minimapButton:SetSize(32, 32)
+minimapButton:SetFrameStrata("MEDIUM")
+minimapButton:SetPoint("TOPLEFT", Minimap, "TOPLEFT", 0, 0)
+minimapButton:SetNormalTexture("Interface\\AddOns\\PedroMap\\PedroMapIcon.tga")
+
+-- Optional: Add a tooltip
+minimapButton:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+    GameTooltip:SetText("PedroMap")
+    GameTooltip:Show()
+end)
+minimapButton:SetScript("OnLeave", function(self)
+    GameTooltip:Hide()
+end)
+
+-- Optional: Add click functionality
+minimapButton:SetScript("OnClick", function(self, button)
+    -- Add your click handling code here
+    print("PedroMap button clicked!")
+end)
