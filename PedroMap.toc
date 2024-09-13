@@ -1,7 +1,7 @@
 ## Interface: 110002
 ## Title: PedroMap
-## Notes: Displays an animation on the minimap
-## Author: YourName
+## Notes: Displays pedro on the minimap
+## Author: OfficiallySp
 ## Version: 1.0
 
 PedroMap.lua
