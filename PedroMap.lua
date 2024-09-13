@@ -86,43 +86,51 @@ local function UpdatePosition()
     local x, y = math.cos(angle), math.sin(angle)
     local minimapShape = GetMinimapShape and GetMinimapShape() or "ROUND"
     
+    -- Increase the radius
+    local radius = 85  -- Increased from 80
+    
     if minimapShape == "ROUND" then
-        x, y = x * 80, y * 80
+        x, y = x * radius, y * radius
     else
-        x = math.max(-78, math.min(x * 103, 78))
-        y = math.max(-78, math.min(y * 103, 78))
+        local diagRadius = radius * 1.414  -- sqrt(2) * radius
+        x = math.max(-radius, math.min(x * diagRadius, radius))
+        y = math.max(-radius, math.min(y * diagRadius, radius))
     end
     
-    minimapButton:SetPoint("CENTER", Minimap, "CENTER", x, y)
+    -- Adjust the offset to move the button slightly outward
+    local xOffset, yOffset = x * 1.25, y * 1.25
+    
+    minimapButton:SetPoint("CENTER", Minimap, "CENTER", xOffset, yOffset)
 end
 
 UpdatePosition()
 
 -- Dragging functionality
-minimapButton:RegisterForDrag("LeftButton")
+minimapButton:RegisterForDrag("RightButton")
 minimapButton:SetScript("OnDragStart", function(self)
-    self:StartMoving()
     self.isMoving = true
 end)
 
 minimapButton:SetScript("OnDragStop", function(self)
-    self:StopMovingOrSizing()
     self.isMoving = false
-    local x, y = self:GetCenter()
-    local cx, cy = Minimap:GetCenter()
-    local dx, dy = x - cx, y - cy
-    local angle = math.deg(math.atan2(dy, dx))
-    self.db.minimapPos = angle
-    UpdatePosition()
 end)
 
 minimapButton:SetScript("OnUpdate", function(self)
     if self.isMoving then
-        local x, y = GetCursorPosition()
+        local mx, my = Minimap:GetCenter()
+        local px, py = GetCursorPosition()
         local scale = Minimap:GetEffectiveScale()
-        x, y = x / scale, y / scale
-        local cx, cy = Minimap:GetCenter()
-        local dx, dy = x - cx, y - cy
+        px, py = px / scale, py / scale
+        
+        -- Increase the draggable area
+        local dx, dy = px - mx, py - my
+        local distance = math.sqrt(dx*dx + dy*dy)
+        local radius = 85  -- Match the radius in UpdatePosition
+        
+        if distance > radius then
+            dx, dy = dx / distance * radius, dy / distance * radius
+        end
+        
         local angle = math.deg(math.atan2(dy, dx))
         self.db.minimapPos = angle
         UpdatePosition()
