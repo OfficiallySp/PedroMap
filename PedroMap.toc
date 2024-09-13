@@ -6,3 +6,4 @@
 ## IconTexture: Interface\AddOns\PedroMap\PedroMapIcon.tga
 
 PedroMap.lua
+PedroMusic.ogg

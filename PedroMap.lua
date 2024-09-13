@@ -1,5 +1,21 @@
 local addonName, addon = ...
 
+-- Function to play music
+local function PlayAddonMusic()
+    if not musicPlaying then
+        PlayMusic("Interface\\AddOns\\PedroMap\\PedroMusic.ogg")
+        musicPlaying = true
+    end
+end
+
+-- Function to stop music
+local function StopAddonMusic()
+    if musicPlaying then
+        StopMusic()
+        musicPlaying = false
+    end
+end
+
 -- Frame to hold our animation
 local animationFrame = CreateFrame("Frame", "PedroMapAnimationFrame", Minimap)
 local minimapSize = Minimap:GetSize()
@@ -32,10 +48,17 @@ local currentFrame = 1
 local animationSpeed = 0.04
 local elapsedTime = 0
 local isAnimationEnabled = true
+local musicPlaying = false
 
 -- Function to update animation
 local function UpdateAnimation(self, elapsed)
-    if not isAnimationEnabled then return end
+    if not isAnimationEnabled then
+        StopAddonMusic()
+        return
+    end
+    
+    PlayAddonMusic()
+    
     elapsedTime = elapsedTime + elapsed
     if elapsedTime >= animationSpeed then
         if #animationTextures > 0 then
@@ -155,8 +178,10 @@ minimapButton:SetScript("OnClick", function(self, button)
         isAnimationEnabled = not isAnimationEnabled
         if isAnimationEnabled then
             animationFrame:Show()
+            PlayAddonMusic()
         else
             animationFrame:Hide()
+            StopAddonMusic()
         end
     end
 end)
