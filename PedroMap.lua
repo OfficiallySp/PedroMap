@@ -20,7 +20,7 @@ end
 -- Frame to hold our animation
 local animationFrame = CreateFrame("Frame", "PedroMapAnimationFrame", Minimap)
 local minimapSize = Minimap:GetSize()
-local frameWidth = minimapSize * (16/9)
+local frameWidth = minimapSize * (16 / 9)
 local frameHeight = minimapSize
 animationFrame:SetSize(frameWidth, frameHeight)
 animationFrame:SetPoint("CENTER", Minimap, "CENTER", 2, -5)
@@ -56,9 +56,9 @@ local function UpdateAnimation(self, elapsed)
         StopAddonMusic()
         return
     end
-    
+
     PlayAddonMusic()
-    
+
     elapsedTime = elapsedTime + elapsed
     if elapsedTime >= animationSpeed then
         if #animationTextures > 0 then
@@ -102,13 +102,15 @@ icon:SetSize(20, 20)
 icon:SetTexture("Interface\\AddOns\\PedroMap\\PedroMapIcon.tga")
 icon:SetPoint("TOPLEFT", 6, -6)
 
-minimapButton.db = { minimapPos = 225 }
+minimapButton.db = {
+    minimapPos = 225
+}
 
 local function UpdatePosition()
     local angle = math.rad(minimapButton.db.minimapPos or 225)
     local x, y = math.cos(angle), math.sin(angle)
     local radius = 85
-    
+
     if GetMinimapShape and GetMinimapShape() ~= "ROUND" then
         local diagRadius = radius * 1.414
         x = math.max(-radius, math.min(x * diagRadius, radius))
@@ -116,7 +118,7 @@ local function UpdatePosition()
     else
         x, y = x * radius, y * radius
     end
-    
+
     minimapButton:SetPoint("CENTER", Minimap, "CENTER", x * 1.25, y * 1.25)
 end
 
@@ -124,15 +126,19 @@ UpdatePosition()
 
 -- Dragging functionality
 minimapButton:RegisterForDrag("RightButton")
-minimapButton:SetScript("OnDragStart", function(self) self.isMoving = true end)
-minimapButton:SetScript("OnDragStop", function(self) self.isMoving = false end)
+minimapButton:SetScript("OnDragStart", function(self)
+    self.isMoving = true
+end)
+minimapButton:SetScript("OnDragStop", function(self)
+    self.isMoving = false
+end)
 minimapButton:SetScript("OnUpdate", function(self)
     if self.isMoving then
         local mx, my = Minimap:GetCenter()
         local px, py = GetCursorPosition()
         local scale = Minimap:GetEffectiveScale()
         px, py = px / scale, py / scale
-        
+
         local dx, dy = px - mx, py - my
         local angle = math.deg(math.atan2(dy, dx))
         self.db.minimapPos = angle
@@ -148,7 +154,9 @@ minimapButton:SetScript("OnEnter", function(self)
     GameTooltip:AddLine("Right-click and drag to move")
     GameTooltip:Show()
 end)
-minimapButton:SetScript("OnLeave", function(self) GameTooltip:Hide() end)
+minimapButton:SetScript("OnLeave", function(self)
+    GameTooltip:Hide()
+end)
 
 -- Toggle functionality
 minimapButton:SetScript("OnClick", function(self, button)
