@@ -2,14 +2,9 @@ local addonName, addon = ...
 
 -- Function to play music
 local musicPath = "Interface\\AddOns\\PedroMap\\PedroMusic.ogg"
-local musicFile = CreateFrame("FRAME")
-musicFile:SetScript("OnLoad", function()
-    PlaySoundFile(musicPath, "Music")
-end)
-
 local function PlayAddonMusic()
     if not musicPlaying then
-        PlaySoundFile("Interface\\AddOns\\PedroMap\\PedroMusic.ogg", "Music")
+        PlayMusic(musicPath)
         musicPlaying = true
     end
 end
@@ -17,7 +12,7 @@ end
 -- Function to stop music
 local function StopAddonMusic()
     if musicPlaying then
-        StopSound("Interface\\AddOns\\PedroMap\\PedroMusic.ogg", "Music")
+        StopMusic()
         musicPlaying = false
     end
 end
@@ -25,9 +20,8 @@ end
 -- Frame to hold our animation
 local animationFrame = CreateFrame("Frame", "PedroMapAnimationFrame", Minimap)
 local minimapSize = Minimap:GetSize()
-local frameWidth = minimapSize * (16/9)  -- Maintain 16:9 aspect ratio
+local frameWidth = minimapSize * (16/9)
 local frameHeight = minimapSize
-
 animationFrame:SetSize(frameWidth, frameHeight)
 animationFrame:SetPoint("CENTER", Minimap, "CENTER", 2, -5)
 
@@ -113,37 +107,25 @@ minimapButton.db = { minimapPos = 225 }
 local function UpdatePosition()
     local angle = math.rad(minimapButton.db.minimapPos or 225)
     local x, y = math.cos(angle), math.sin(angle)
-    local minimapShape = GetMinimapShape and GetMinimapShape() or "ROUND"
+    local radius = 85
     
-    -- Increase the radius
-    local radius = 85  -- Increased from 80
-    
-    if minimapShape == "ROUND" then
-        x, y = x * radius, y * radius
-    else
-        local diagRadius = radius * 1.414  -- sqrt(2) * radius
+    if GetMinimapShape and GetMinimapShape() ~= "ROUND" then
+        local diagRadius = radius * 1.414
         x = math.max(-radius, math.min(x * diagRadius, radius))
         y = math.max(-radius, math.min(y * diagRadius, radius))
+    else
+        x, y = x * radius, y * radius
     end
     
-    -- Adjust the offset to move the button slightly outward
-    local xOffset, yOffset = x * 1.25, y * 1.25
-    
-    minimapButton:SetPoint("CENTER", Minimap, "CENTER", xOffset, yOffset)
+    minimapButton:SetPoint("CENTER", Minimap, "CENTER", x * 1.25, y * 1.25)
 end
 
 UpdatePosition()
 
 -- Dragging functionality
 minimapButton:RegisterForDrag("RightButton")
-minimapButton:SetScript("OnDragStart", function(self)
-    self.isMoving = true
-end)
-
-minimapButton:SetScript("OnDragStop", function(self)
-    self.isMoving = false
-end)
-
+minimapButton:SetScript("OnDragStart", function(self) self.isMoving = true end)
+minimapButton:SetScript("OnDragStop", function(self) self.isMoving = false end)
 minimapButton:SetScript("OnUpdate", function(self)
     if self.isMoving then
         local mx, my = Minimap:GetCenter()
@@ -151,15 +133,7 @@ minimapButton:SetScript("OnUpdate", function(self)
         local scale = Minimap:GetEffectiveScale()
         px, py = px / scale, py / scale
         
-        -- Increase the draggable area
         local dx, dy = px - mx, py - my
-        local distance = math.sqrt(dx*dx + dy*dy)
-        local radius = 85  -- Match the radius in UpdatePosition
-        
-        if distance > radius then
-            dx, dy = dx / distance * radius, dy / distance * radius
-        end
-        
         local angle = math.deg(math.atan2(dy, dx))
         self.db.minimapPos = angle
         UpdatePosition()
@@ -174,9 +148,7 @@ minimapButton:SetScript("OnEnter", function(self)
     GameTooltip:AddLine("Right-click and drag to move")
     GameTooltip:Show()
 end)
-minimapButton:SetScript("OnLeave", function(self)
-    GameTooltip:Hide()
-end)
+minimapButton:SetScript("OnLeave", function(self) GameTooltip:Hide() end)
 
 -- Toggle functionality
 minimapButton:SetScript("OnClick", function(self, button)
