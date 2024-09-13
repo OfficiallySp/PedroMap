@@ -1,9 +1,15 @@
 local addonName, addon = ...
 
 -- Function to play music
+local musicPath = "Interface\\AddOns\\PedroMap\\PedroMusic.ogg"
+local musicFile = CreateFrame("FRAME")
+musicFile:SetScript("OnLoad", function()
+    PlaySoundFile(musicPath, "Music")
+end)
+
 local function PlayAddonMusic()
     if not musicPlaying then
-        PlayMusic("Interface\\AddOns\\PedroMap\\PedroMusic.ogg")
+        PlaySoundFile("Interface\\AddOns\\PedroMap\\PedroMusic.ogg", "Music")
         musicPlaying = true
     end
 end
@@ -11,7 +17,7 @@ end
 -- Function to stop music
 local function StopAddonMusic()
     if musicPlaying then
-        StopMusic()
+        StopSound("Interface\\AddOns\\PedroMap\\PedroMusic.ogg", "Music")
         musicPlaying = false
     end
 end

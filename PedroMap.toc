@@ -2,8 +2,7 @@
 ## Title: PedroMap
 ## Notes: Displays pedro on the minimap
 ## Author: OfficiallySp
-## Version: 1.0
+## Version: 1.1
 ## IconTexture: Interface\AddOns\PedroMap\PedroMapIcon.tga
 
 PedroMap.lua
-PedroMusic.ogg
