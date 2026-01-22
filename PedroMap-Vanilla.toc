@@ -1,8 +1,8 @@
-## Interface: 110002
+## Interface: 11500
 ## Title: PedroMap
 ## Notes: Displays pedro on the minimap
 ## Author: OfficiallySp
-## Version: 1.1
+## Version: 1.2
 ## IconTexture: Interface\AddOns\PedroMap\PedroMapIcon.tga
 
 PedroMap.lua

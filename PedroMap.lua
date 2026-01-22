@@ -24,6 +24,8 @@ local frameWidth = minimapSize * (16 / 9)
 local frameHeight = minimapSize
 animationFrame:SetSize(frameWidth, frameHeight)
 animationFrame:SetPoint("CENTER", Minimap, "CENTER", 2, -5)
+animationFrame:SetFrameStrata("MEDIUM")
+animationFrame:SetFrameLevel(2)
 
 -- Table to hold our animation textures
 local animationTextures = {}
@@ -109,17 +111,17 @@ minimapButton.db = {
 local function UpdatePosition()
     local angle = math.rad(minimapButton.db.minimapPos or 225)
     local x, y = math.cos(angle), math.sin(angle)
-    local radius = 85
+    local minimapShape = GetMinimapShape and GetMinimapShape() or "ROUND"
+    local radius = 76
 
-    if GetMinimapShape and GetMinimapShape() ~= "ROUND" then
-        local diagRadius = radius * 1.414
-        x = math.max(-radius, math.min(x * diagRadius, radius))
-        y = math.max(-radius, math.min(y * diagRadius, radius))
-    else
-        x, y = x * radius, y * radius
+    if minimapShape ~= "ROUND" then
+        radius = radius * 0.75
     end
 
-    minimapButton:SetPoint("CENTER", Minimap, "CENTER", x * 1.25, y * 1.25)
+    x = x * radius
+    y = y * radius
+
+    minimapButton:SetPoint("CENTER", Minimap, "CENTER", x, y)
 end
 
 UpdatePosition()
