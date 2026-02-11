@@ -11,7 +11,6 @@ local PedroMap = CreateFrame("Frame", "PedroMapFrame")
 -- ============================================================================
 
 local CONFIG = {
-    ADDON_PATH = "Interface\\AddOns\\PedroMap\\",
     MUSIC_FILE = "Interface\\AddOns\\PedroMap\\PedroMusic.ogg",
     ICON_TEXTURE = "Interface\\AddOns\\PedroMap\\PedroMapIcon.tga",
     FRAME_COUNT = 693,
@@ -23,20 +22,26 @@ local CONFIG = {
     TEX_WIDTH = 640,
     TEX_HEIGHT = 360,
     -- Scale: fraction of minimap dimension (was 1.42, now smaller with correct ratio)
-    ANIMATION_SCALE = 1.76,
+    ANIMATION_SCALE = 1.75,
+    -- Atlas: one texture, SetTexCoord per frame - no loading = no flicker
+    ATLAS_PATH = "Interface\\AddOns\\PedroMap\\PedroMapAtlas.tga",
+    ATLAS_COLS = 27,
+    ATLAS_ROWS = 26,
+    -- Build script centers 151x85 content in 151x157 cells; offset for content region
+    ATLAS_CELL_W = 151,
+    ATLAS_CELL_H = 157,
+    ATLAS_CONTENT_H = 85,
+    ATLAS_SIZE = 4096,
 }
 
 -- ============================================================================
 -- State
 -- ============================================================================
 
-local texturePaths = {}
 local musicPlaying = false
 local currentFrame = 1
 local elapsedTime = 0
-local nextFrameIndex = nil
-local activeTexture
-local nextTexture
+local animationTexture
 
 -- ============================================================================
 -- Database
@@ -66,15 +71,17 @@ local function StopAddonMusic()
     end
 end
 
--- ============================================================================
--- Texture Loading
--- ============================================================================
-
-local function LoadTexturePaths()
-    for i = 0, CONFIG.FRAME_COUNT - 1 do
-        local frameStr = string.format("%03d", i)
-        texturePaths[i + 1] = CONFIG.ADDON_PATH .. "Textures\\frame" .. frameStr .. ".tga"
-    end
+-- Atlas UV coords: frame index (1-based) -> left, right, top, bottom (content region only, no letterboxing)
+local function GetAtlasCoords(frameIndex)
+    local i = frameIndex - 1
+    local col = i % CONFIG.ATLAS_COLS
+    local row = math.floor(i / CONFIG.ATLAS_COLS)
+    local contentOffsetY = (CONFIG.ATLAS_CELL_H - CONFIG.ATLAS_CONTENT_H) / 2
+    local left = (col * CONFIG.ATLAS_CELL_W) / CONFIG.ATLAS_SIZE
+    local right = ((col + 1) * CONFIG.ATLAS_CELL_W) / CONFIG.ATLAS_SIZE
+    local top = (row * CONFIG.ATLAS_CELL_H + contentOffsetY) / CONFIG.ATLAS_SIZE
+    local bottom = (row * CONFIG.ATLAS_CELL_H + contentOffsetY + CONFIG.ATLAS_CONTENT_H) / CONFIG.ATLAS_SIZE
+    return left, right, top, bottom
 end
 
 -- ============================================================================
@@ -99,21 +106,16 @@ local function SetupAnimationFrame()
             frameW = base * aspect
         end
         animationFrame:SetSize(frameW, frameH)
-        animationFrame:SetPoint("CENTER", Minimap, "CENTER", 0, -6)
+        animationFrame:SetPoint("CENTER", Minimap, "CENTER", 3, -5)
     end
 end
 
 Minimap:SetScript("OnSizeChanged", SetupAnimationFrame)
 
--- Double-buffered textures
-local tex1 = animationFrame:CreateTexture(nil, "OVERLAY")
-tex1:SetAllPoints(animationFrame)
-
-local tex2 = animationFrame:CreateTexture(nil, "OVERLAY")
-tex2:SetAllPoints(animationFrame)
-
-activeTexture = tex1
-nextTexture = tex2
+-- Single texture (no swap - avoids flicker at all framerates)
+animationTexture = animationFrame:CreateTexture(nil, "OVERLAY")
+animationTexture:SetAllPoints(animationFrame)
+animationTexture:SetAlpha(CONFIG.ANIMATION_ALPHA)
 
 -- ============================================================================
 -- Animation Loop
@@ -128,28 +130,18 @@ updateFrame:SetScript("OnUpdate", function(_, elapsed)
 
     PlayAddonMusic()
 
-    -- Swap textures on frame change (show before hide to avoid flicker)
-    if nextFrameIndex then
-        nextTexture:SetAlpha(CONFIG.ANIMATION_ALPHA)
-        nextTexture:Show()
-        activeTexture:Hide()
-        activeTexture, nextTexture = nextTexture, activeTexture
-        nextFrameIndex = nil
-    end
-
     elapsedTime = elapsedTime + elapsed
-    if #texturePaths > 0 then
+    if CONFIG.FRAME_COUNT > 0 then
         local advanced = false
         -- Catch up: advance through all elapsed frames at low framerates
         while elapsedTime >= CONFIG.ANIMATION_SPEED do
-            currentFrame = (currentFrame % #texturePaths) + 1
+            currentFrame = (currentFrame % CONFIG.FRAME_COUNT) + 1
             elapsedTime = elapsedTime - CONFIG.ANIMATION_SPEED
             advanced = true
         end
         if advanced then
-            nextTexture:SetTexture(texturePaths[currentFrame])
-            nextTexture:Hide()
-            nextFrameIndex = currentFrame
+            local l, r, t, b = GetAtlasCoords(currentFrame)
+            animationTexture:SetTexCoord(l, r, t, b)
         end
     end
 end)
@@ -223,15 +215,13 @@ btn:SetScript("OnClick", function(self, button)
         PedroMapDB.enabled = not PedroMapDB.enabled
         if PedroMapDB.enabled then
             animationFrame:Show()
-            if #texturePaths > 0 then
+            if CONFIG.FRAME_COUNT > 0 then
                 currentFrame = 1
-                activeTexture:SetTexture(texturePaths[1])
-                activeTexture:SetAlpha(CONFIG.ANIMATION_ALPHA)
-                activeTexture:Show()
-                nextTexture:SetTexture(texturePaths[2] or texturePaths[1])
-                nextTexture:Hide()
-                nextFrameIndex = nil
                 elapsedTime = 0
+                animationTexture:SetTexture(CONFIG.ATLAS_PATH)
+                local l, r, t, b = GetAtlasCoords(1)
+                animationTexture:SetTexCoord(l, r, t, b)
+                animationTexture:Show()
             end
             PlayAddonMusic()
         else
@@ -249,14 +239,12 @@ PedroMap:RegisterEvent("ADDON_LOADED")
 PedroMap:SetScript("OnEvent", function(self, event, name)
     if name == addonName then
         InitDB()
-        LoadTexturePaths()
 
-        if #texturePaths > 0 then
-            activeTexture:SetTexture(texturePaths[1])
-            activeTexture:SetAlpha(CONFIG.ANIMATION_ALPHA)
-            activeTexture:Show()
-            nextTexture:SetTexture(texturePaths[2] or texturePaths[1])
-            nextTexture:Hide()
+        if CONFIG.FRAME_COUNT > 0 then
+            animationTexture:SetTexture(CONFIG.ATLAS_PATH)
+            local l, r, t, b = GetAtlasCoords(1)
+            animationTexture:SetTexCoord(l, r, t, b)
+            animationTexture:Show()
         end
 
         if PedroMapDB.enabled then
