@@ -1,61 +1,36 @@
---[[
-    PedroMap - Displays Pedro on the minimap
-    A World of Warcraft addon by OfficiallySp
-]]
+--[[ PedroMap - Displays Pedro on the minimap by OfficiallySp ]]
 
-local addonName, addon = ...
+local addonName = ...
 local PedroMap = CreateFrame("Frame", "PedroMapFrame")
-
--- ============================================================================
--- Configuration
--- ============================================================================
 
 local CONFIG = {
     MUSIC_FILE = "Interface\\AddOns\\PedroMap\\PedroMusic.ogg",
     ICON_TEXTURE = "Interface\\AddOns\\PedroMap\\PedroMapIcon.tga",
+    ATLAS_PATH = "Interface\\AddOns\\PedroMap\\PedroMapAtlas.tga",
     FRAME_COUNT = 693,
     ANIMATION_SPEED = 0.04,
+    ANIMATION_ALPHA = 0.75,
+    ANIMATION_SCALE = 1.75,
     MINIMAP_BUTTON_SIZE = 31,
-    -- 1 = solid, 0.5–0.9 = semi-transparent
-    ANIMATION_ALPHA = 1,
-    -- Texture aspect ratio (frame000.tga is 640x360)
     TEX_WIDTH = 640,
     TEX_HEIGHT = 360,
-    -- Scale: fraction of minimap dimension (was 1.42, now smaller with correct ratio)
-    ANIMATION_SCALE = 1.75,
-    -- Atlas: one texture, SetTexCoord per frame - no loading = no flicker
-    ATLAS_PATH = "Interface\\AddOns\\PedroMap\\PedroMapAtlas.tga",
     ATLAS_COLS = 27,
-    ATLAS_ROWS = 26,
-    -- Build script centers 151x85 content in 151x157 cells; offset for content region
     ATLAS_CELL_W = 151,
     ATLAS_CELL_H = 157,
     ATLAS_CONTENT_H = 85,
     ATLAS_SIZE = 4096,
 }
 
--- ============================================================================
--- State
--- ============================================================================
-
 local musicPlaying = false
 local currentFrame = 1
 local elapsedTime = 0
 local animationTexture
-
--- ============================================================================
--- Database
--- ============================================================================
 
 local function InitDB()
     PedroMapDB = PedroMapDB or {}  -- Global: set by WoW from SavedVariables
     PedroMapDB.enabled = PedroMapDB.enabled ~= false
     PedroMapDB.minimapPos = PedroMapDB.minimapPos or 225
 end
-
--- ============================================================================
--- Music (use _G to avoid shadowing WoW API)
--- ============================================================================
 
 local function PlayAddonMusic()
     if not musicPlaying then
@@ -71,22 +46,17 @@ local function StopAddonMusic()
     end
 end
 
--- Atlas UV coords: frame index (1-based) -> left, right, top, bottom (content region only, no letterboxing)
-local function GetAtlasCoords(frameIndex)
+local function ApplyFrame(frameIndex)
     local i = frameIndex - 1
     local col = i % CONFIG.ATLAS_COLS
     local row = math.floor(i / CONFIG.ATLAS_COLS)
-    local contentOffsetY = (CONFIG.ATLAS_CELL_H - CONFIG.ATLAS_CONTENT_H) / 2
-    local left = (col * CONFIG.ATLAS_CELL_W) / CONFIG.ATLAS_SIZE
-    local right = ((col + 1) * CONFIG.ATLAS_CELL_W) / CONFIG.ATLAS_SIZE
-    local top = (row * CONFIG.ATLAS_CELL_H + contentOffsetY) / CONFIG.ATLAS_SIZE
-    local bottom = (row * CONFIG.ATLAS_CELL_H + contentOffsetY + CONFIG.ATLAS_CONTENT_H) / CONFIG.ATLAS_SIZE
-    return left, right, top, bottom
+    local oy = (CONFIG.ATLAS_CELL_H - CONFIG.ATLAS_CONTENT_H) / 2
+    local l = (col * CONFIG.ATLAS_CELL_W) / CONFIG.ATLAS_SIZE
+    local r = ((col + 1) * CONFIG.ATLAS_CELL_W) / CONFIG.ATLAS_SIZE
+    local t = (row * CONFIG.ATLAS_CELL_H + oy) / CONFIG.ATLAS_SIZE
+    local b = (row * CONFIG.ATLAS_CELL_H + oy + CONFIG.ATLAS_CONTENT_H) / CONFIG.ATLAS_SIZE
+    animationTexture:SetTexCoord(l, r, t, b)
 end
-
--- ============================================================================
--- Animation Frame
--- ============================================================================
 
 local animationFrame = CreateFrame("Frame", "PedroMapAnimationFrame", Minimap)
 animationFrame:SetFrameStrata("MEDIUM")
@@ -97,58 +67,31 @@ local function SetupAnimationFrame()
     if w and w > 0 and h and h > 0 then
         local base = math.min(w, h) * CONFIG.ANIMATION_SCALE
         local aspect = CONFIG.TEX_WIDTH / CONFIG.TEX_HEIGHT
-        local frameW, frameH
-        if aspect >= 1 then
-            frameW = base
-            frameH = base / aspect
-        else
-            frameH = base
-            frameW = base * aspect
-        end
-        animationFrame:SetSize(frameW, frameH)
+        animationFrame:SetSize(base, base / aspect)
         animationFrame:SetPoint("CENTER", Minimap, "CENTER", 3, -5)
     end
 end
 
 Minimap:SetScript("OnSizeChanged", SetupAnimationFrame)
 
--- Single texture (no swap - avoids flicker at all framerates)
 animationTexture = animationFrame:CreateTexture(nil, "OVERLAY")
 animationTexture:SetAllPoints(animationFrame)
 animationTexture:SetAlpha(CONFIG.ANIMATION_ALPHA)
 
--- ============================================================================
--- Animation Loop
--- ============================================================================
-
 local updateFrame = CreateFrame("Frame")
 updateFrame:SetScript("OnUpdate", function(_, elapsed)
-    if not PedroMapDB.enabled then
+    if not PedroMapDB or not PedroMapDB.enabled then
         StopAddonMusic()
         return
     end
-
     PlayAddonMusic()
-
     elapsedTime = elapsedTime + elapsed
-    if CONFIG.FRAME_COUNT > 0 then
-        local advanced = false
-        -- Catch up: advance through all elapsed frames at low framerates
-        while elapsedTime >= CONFIG.ANIMATION_SPEED do
-            currentFrame = (currentFrame % CONFIG.FRAME_COUNT) + 1
-            elapsedTime = elapsedTime - CONFIG.ANIMATION_SPEED
-            advanced = true
-        end
-        if advanced then
-            local l, r, t, b = GetAtlasCoords(currentFrame)
-            animationTexture:SetTexCoord(l, r, t, b)
-        end
+    while elapsedTime >= CONFIG.ANIMATION_SPEED do
+        currentFrame = (currentFrame % CONFIG.FRAME_COUNT) + 1
+        elapsedTime = elapsedTime - CONFIG.ANIMATION_SPEED
     end
+    ApplyFrame(currentFrame)
 end)
-
--- ============================================================================
--- Minimap Button
--- ============================================================================
 
 local btn = CreateFrame("Button", "PedroMapMinimapButton", Minimap)
 btn:SetSize(CONFIG.MINIMAP_BUTTON_SIZE, CONFIG.MINIMAP_BUTTON_SIZE)
@@ -210,19 +153,16 @@ btn:SetScript("OnLeave", function()
     GameTooltip:Hide()
 end)
 
-btn:SetScript("OnClick", function(self, button)
+btn:SetScript("OnClick", function(_, button)
     if button == "LeftButton" then
         PedroMapDB.enabled = not PedroMapDB.enabled
         if PedroMapDB.enabled then
+            currentFrame = 1
+            elapsedTime = 0
+            animationTexture:SetTexture(CONFIG.ATLAS_PATH)
+            ApplyFrame(1)
+            animationTexture:Show()
             animationFrame:Show()
-            if CONFIG.FRAME_COUNT > 0 then
-                currentFrame = 1
-                elapsedTime = 0
-                animationTexture:SetTexture(CONFIG.ATLAS_PATH)
-                local l, r, t, b = GetAtlasCoords(1)
-                animationTexture:SetTexCoord(l, r, t, b)
-                animationTexture:Show()
-            end
             PlayAddonMusic()
         else
             animationFrame:Hide()
@@ -231,36 +171,17 @@ btn:SetScript("OnClick", function(self, button)
     end
 end)
 
--- ============================================================================
--- Initialize
--- ============================================================================
-
 PedroMap:RegisterEvent("ADDON_LOADED")
-PedroMap:SetScript("OnEvent", function(self, event, name)
-    if name == addonName then
-        InitDB()
-
-        if CONFIG.FRAME_COUNT > 0 then
-            animationTexture:SetTexture(CONFIG.ATLAS_PATH)
-            local l, r, t, b = GetAtlasCoords(1)
-            animationTexture:SetTexCoord(l, r, t, b)
-            animationTexture:Show()
-        end
-
-        if PedroMapDB.enabled then
-            animationFrame:Show()
-            PlayAddonMusic()
-        else
-            animationFrame:Hide()
-        end
-
-        UpdateButtonPosition()
-
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0.1, SetupAnimationFrame)
-        end
-        SetupAnimationFrame()
-
-        self:UnregisterEvent("ADDON_LOADED")
-    end
+PedroMap:SetScript("OnEvent", function(self, _, name)
+    if name ~= addonName then return end
+    InitDB()
+    animationTexture:SetTexture(CONFIG.ATLAS_PATH)
+    ApplyFrame(1)
+    animationTexture:Show()
+    animationFrame:SetShown(PedroMapDB.enabled)
+    if PedroMapDB.enabled then PlayAddonMusic() end
+    UpdateButtonPosition()
+    if C_Timer and C_Timer.After then C_Timer.After(0.1, SetupAnimationFrame) end
+    SetupAnimationFrame()
+    self:UnregisterEvent("ADDON_LOADED")
 end)
