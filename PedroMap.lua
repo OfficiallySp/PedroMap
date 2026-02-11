@@ -1,90 +1,133 @@
+--[[
+    PedroMap - Displays Pedro on the minimap
+    A World of Warcraft addon by OfficiallySp
+]]
+
 local addonName, addon = ...
+local PedroMap = CreateFrame("Frame", "PedroMapFrame")
 
--- Initialize variables before use
+-- ============================================================================
+-- Configuration
+-- ============================================================================
+
+local CONFIG = {
+    ADDON_PATH = "Interface\\AddOns\\PedroMap\\",
+    MUSIC_FILE = "Interface\\AddOns\\PedroMap\\PedroMusic.ogg",
+    ICON_TEXTURE = "Interface\\AddOns\\PedroMap\\PedroMapIcon.tga",
+    FRAME_COUNT = 693,
+    ANIMATION_SPEED = 0.04,
+    MINIMAP_BUTTON_SIZE = 31,
+    -- Texture aspect ratio (frame000.tga is 640x360)
+    TEX_WIDTH = 640,
+    TEX_HEIGHT = 360,
+    -- Scale: fraction of minimap dimension (was 1.42, now smaller with correct ratio)
+    ANIMATION_SCALE = 1.76,
+}
+
+-- ============================================================================
+-- State
+-- ============================================================================
+
+local texturePaths = {}
 local musicPlaying = false
-local isAnimationEnabled = true
 local currentFrame = 1
-local animationSpeed = 0.04
 local elapsedTime = 0
+local nextFrameIndex = nil
+local activeTexture
+local nextTexture
 
--- Function to play music
-local musicPath = "Interface\\AddOns\\PedroMap\\PedroMusic.ogg"
+-- ============================================================================
+-- Database
+-- ============================================================================
+
+local function InitDB()
+    PedroMapDB = PedroMapDB or {}  -- Global: set by WoW from SavedVariables
+    PedroMapDB.enabled = PedroMapDB.enabled ~= false
+    PedroMapDB.minimapPos = PedroMapDB.minimapPos or 225
+end
+
+-- ============================================================================
+-- Music (use _G to avoid shadowing WoW API)
+-- ============================================================================
+
 local function PlayAddonMusic()
     if not musicPlaying then
-        PlayMusic(musicPath)
+        _G.PlayMusic(CONFIG.MUSIC_FILE)
         musicPlaying = true
     end
 end
 
--- Function to stop music
 local function StopAddonMusic()
     if musicPlaying then
-        StopMusic()
+        _G.StopMusic()
         musicPlaying = false
     end
 end
 
--- Frame to hold our animation
-local animationFrame = CreateFrame("Frame", "PedroMapAnimationFrame", Minimap)
--- Function to setup frame size to properly fill minimap
-local function SetupAnimationFrame()
-    local minimapWidth, minimapHeight = Minimap:GetSize()
-    if minimapWidth and minimapWidth > 0 then
-        -- For circular minimap, we need to cover the full diameter
-        -- GetSize() typically returns the width, which is the diameter for a circle
-        -- Make frame slightly larger to ensure full coverage of circular minimap
-        local frameSize = minimapWidth * 1.42  -- sqrt(2) to cover diagonal, ensures full circle coverage
-        animationFrame:SetSize(frameSize, frameSize)
-        animationFrame:SetPoint("CENTER", Minimap, "CENTER", 0, 0)
+-- ============================================================================
+-- Texture Loading
+-- ============================================================================
+
+local function LoadTexturePaths()
+    for i = 0, CONFIG.FRAME_COUNT - 1 do
+        local frameStr = string.format("%03d", i)
+        texturePaths[i + 1] = CONFIG.ADDON_PATH .. "Textures\\frame" .. frameStr .. ".tga"
     end
 end
 
--- Initial setup - wait a moment for UI to be ready
-C_Timer.After(0.1, SetupAnimationFrame)
-SetupAnimationFrame()  -- Also try immediately
--- Update if minimap size changes
-Minimap:SetScript("OnSizeChanged", SetupAnimationFrame)
+-- ============================================================================
+-- Animation Frame
+-- ============================================================================
 
+local animationFrame = CreateFrame("Frame", "PedroMapAnimationFrame", Minimap)
 animationFrame:SetFrameStrata("MEDIUM")
 animationFrame:SetFrameLevel(2)
 
--- Use two textures for double-buffering to eliminate flickering
-local animationTexture1 = animationFrame:CreateTexture(nil, "OVERLAY")
-animationTexture1:SetAllPoints(animationFrame)
-animationTexture1:SetTexCoord(0, 1, 0, 1)
-
-local animationTexture2 = animationFrame:CreateTexture(nil, "OVERLAY")
-animationTexture2:SetAllPoints(animationFrame)
-animationTexture2:SetTexCoord(0, 1, 0, 1)
-animationTexture2:SetAlpha(0)  -- Start invisible
-
-local activeTexture = animationTexture1
-local nextTexture = animationTexture2
-
--- Table to hold texture paths (more memory efficient than multiple textures)
-local texturePaths = {}
-
--- Function to load texture paths
-local function LoadTextures()
-    for i = 0, 692 do
-        local frameNumber = string.format("%03d", i)
-        local texturePath = "Interface\\AddOns\\PedroMap\\Textures\\frame" .. frameNumber .. ".tga"
-        -- Store path directly - WoW will handle missing textures gracefully
-        table.insert(texturePaths, texturePath)
+local function SetupAnimationFrame()
+    local w, h = Minimap:GetSize()
+    if w and w > 0 and h and h > 0 then
+        local base = math.min(w, h) * CONFIG.ANIMATION_SCALE
+        local aspect = CONFIG.TEX_WIDTH / CONFIG.TEX_HEIGHT
+        local frameW, frameH
+        if aspect >= 1 then
+            frameW = base
+            frameH = base / aspect
+        else
+            frameH = base
+            frameW = base * aspect
+        end
+        animationFrame:SetSize(frameW, frameH)
+        animationFrame:SetPoint("CENTER", Minimap, "CENTER", 0, -6)
     end
 end
 
--- Function to update animation (double-buffering with immediate swap)
-local nextFrameIndex = nil
-local function UpdateAnimation(self, elapsed)
-    if not isAnimationEnabled then
+Minimap:SetScript("OnSizeChanged", SetupAnimationFrame)
+
+-- Double-buffered textures
+local tex1 = animationFrame:CreateTexture(nil, "OVERLAY")
+tex1:SetAllPoints(animationFrame)
+
+local tex2 = animationFrame:CreateTexture(nil, "OVERLAY")
+tex2:SetAllPoints(animationFrame)
+tex2:SetAlpha(0)
+
+activeTexture = tex1
+nextTexture = tex2
+
+-- ============================================================================
+-- Animation Loop
+-- ============================================================================
+
+local updateFrame = CreateFrame("Frame")
+updateFrame:SetScript("OnUpdate", function(_, elapsed)
+    if not PedroMapDB.enabled then
         StopAddonMusic()
         return
     end
 
     PlayAddonMusic()
 
-    -- If we have a pending frame, swap textures immediately
+    -- Swap textures on frame change
     if nextFrameIndex then
         activeTexture:Hide()
         nextTexture:Show()
@@ -93,121 +136,84 @@ local function UpdateAnimation(self, elapsed)
     end
 
     elapsedTime = elapsedTime + elapsed
-    if elapsedTime >= animationSpeed then
-        if #texturePaths > 0 then
-            -- Calculate next frame
-            currentFrame = (currentFrame % #texturePaths) + 1
-            -- Pre-load next frame into hidden texture
-            nextTexture:SetTexture(texturePaths[currentFrame])
-            nextTexture:Hide()  -- Keep hidden until swap
-            -- Mark for swap on next update
-            nextFrameIndex = currentFrame
-        end
-        elapsedTime = elapsedTime - animationSpeed
+    if elapsedTime >= CONFIG.ANIMATION_SPEED and #texturePaths > 0 then
+        currentFrame = (currentFrame % #texturePaths) + 1
+        nextTexture:SetTexture(texturePaths[currentFrame])
+        nextTexture:Hide()
+        nextFrameIndex = currentFrame
+        elapsedTime = elapsedTime - CONFIG.ANIMATION_SPEED
     end
-end
+end)
 
--- Event frame for updating
-local updateFrame = CreateFrame("Frame")
-updateFrame:SetScript("OnUpdate", UpdateAnimation)
+-- ============================================================================
+-- Minimap Button
+-- ============================================================================
 
--- Load textures and show the first frame
-LoadTextures()
-if #texturePaths > 0 then
-    activeTexture:SetTexture(texturePaths[1])
-    activeTexture:Show()
-    nextTexture:SetTexture(texturePaths[2] or texturePaths[1])
-    nextTexture:Hide()
-end
+local btn = CreateFrame("Button", "PedroMapMinimapButton", Minimap)
+btn:SetSize(CONFIG.MINIMAP_BUTTON_SIZE, CONFIG.MINIMAP_BUTTON_SIZE)
+btn:SetFrameStrata("MEDIUM")
+btn:SetFrameLevel(8)
+btn:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 
--- Minimap button
-local minimapButton = CreateFrame("Button", "PedroMapMinimapButton", Minimap)
-minimapButton:SetSize(31, 31)
-minimapButton:SetFrameStrata("MEDIUM")
-minimapButton:SetFrameLevel(8)
-minimapButton:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+local btnOverlay = btn:CreateTexture(nil, "OVERLAY")
+btnOverlay:SetSize(53, 53)
+btnOverlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+btnOverlay:SetPoint("TOPLEFT")
 
-local overlay = minimapButton:CreateTexture(nil, "OVERLAY")
-overlay:SetSize(53, 53)
-overlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-overlay:SetPoint("TOPLEFT")
+local btnBg = btn:CreateTexture(nil, "BACKGROUND")
+btnBg:SetSize(25, 25)
+btnBg:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+btnBg:SetPoint("TOPLEFT", 2, -4)
 
-local background = minimapButton:CreateTexture(nil, "BACKGROUND")
-background:SetSize(25, 25)
-background:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
-background:SetPoint("TOPLEFT", 2, -4)
+local btnIcon = btn:CreateTexture(nil, "ARTWORK")
+btnIcon:SetSize(20, 20)
+btnIcon:SetTexture(CONFIG.ICON_TEXTURE)
+btnIcon:SetPoint("TOPLEFT", 6, -6)
 
-local icon = minimapButton:CreateTexture(nil, "ARTWORK")
-icon:SetSize(20, 20)
-icon:SetTexture("Interface\\AddOns\\PedroMap\\PedroMapIcon.tga")
-icon:SetPoint("TOPLEFT", 6, -6)
-
-minimapButton.db = {
-    minimapPos = 225
-}
-
-local function UpdatePosition()
-    local angle = math.rad(minimapButton.db.minimapPos or 225)
+local function UpdateButtonPosition()
+    local angle = math.rad(PedroMapDB.minimapPos)
     local x, y = math.cos(angle), math.sin(angle)
-    local minimapShape = GetMinimapShape and GetMinimapShape() or "ROUND"
-    -- Derive radius from actual Minimap size (retail uses different dimensions than Classic/Mists)
+    local shape = GetMinimapShape and GetMinimapShape() or "ROUND"
     local w, h = Minimap:GetWidth(), Minimap:GetHeight()
     local radius = (w and h and math.min(w, h) / 2) or 76
-
-    if minimapShape ~= "ROUND" then
+    if shape ~= "ROUND" then
         radius = radius * 0.75
     end
-
-    x = x * radius
-    y = y * radius
-
-    minimapButton:SetPoint("CENTER", Minimap, "CENTER", x, y)
+    btn:SetPoint("CENTER", Minimap, "CENTER", x * radius, y * radius)
 end
 
-UpdatePosition()
-
--- Dragging functionality (optimized to only update when dragging)
-minimapButton:RegisterForDrag("RightButton")
-minimapButton:SetScript("OnDragStart", function(self)
-    self.isMoving = true
-    -- Only enable OnUpdate when dragging
-    self:SetScript("OnUpdate", function(btn)
+btn:RegisterForDrag("RightButton")
+btn:SetScript("OnDragStart", function(self)
+    self:SetScript("OnUpdate", function()
         local mx, my = Minimap:GetCenter()
         local px, py = GetCursorPosition()
         local scale = Minimap:GetEffectiveScale()
         px, py = px / scale, py / scale
-
-        local dx, dy = px - mx, py - my
-        local angle = math.deg(math.atan2(dy, dx))
-        btn.db.minimapPos = angle
-        UpdatePosition()
+        local angle = math.deg(math.atan2(py - my, px - mx))
+        PedroMapDB.minimapPos = angle
+        UpdateButtonPosition()
     end)
 end)
-minimapButton:SetScript("OnDragStop", function(self)
-    self.isMoving = false
-    -- Disable OnUpdate when not dragging to save performance
+btn:SetScript("OnDragStop", function(self)
     self:SetScript("OnUpdate", nil)
 end)
 
--- Tooltip
-minimapButton:SetScript("OnEnter", function(self)
+btn:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
     GameTooltip:SetText("PedroMap")
-    GameTooltip:AddLine("Left-click to toggle animation")
-    GameTooltip:AddLine("Right-click and drag to move")
+    GameTooltip:AddLine("Left-click to toggle animation", 0.7, 0.7, 0.7)
+    GameTooltip:AddLine("Right-click and drag to move", 0.7, 0.7, 0.7)
     GameTooltip:Show()
 end)
-minimapButton:SetScript("OnLeave", function(self)
+btn:SetScript("OnLeave", function()
     GameTooltip:Hide()
 end)
 
--- Toggle functionality
-minimapButton:SetScript("OnClick", function(self, button)
+btn:SetScript("OnClick", function(self, button)
     if button == "LeftButton" then
-        isAnimationEnabled = not isAnimationEnabled
-        if isAnimationEnabled then
+        PedroMapDB.enabled = not PedroMapDB.enabled
+        if PedroMapDB.enabled then
             animationFrame:Show()
-            -- Reset to first frame when enabling
             if #texturePaths > 0 then
                 currentFrame = 1
                 activeTexture:SetTexture(texturePaths[1])
@@ -222,5 +228,40 @@ minimapButton:SetScript("OnClick", function(self, button)
             animationFrame:Hide()
             StopAddonMusic()
         end
+    end
+end)
+
+-- ============================================================================
+-- Initialize
+-- ============================================================================
+
+PedroMap:RegisterEvent("ADDON_LOADED")
+PedroMap:SetScript("OnEvent", function(self, event, name)
+    if name == addonName then
+        InitDB()
+        LoadTexturePaths()
+
+        if #texturePaths > 0 then
+            activeTexture:SetTexture(texturePaths[1])
+            activeTexture:Show()
+            nextTexture:SetTexture(texturePaths[2] or texturePaths[1])
+            nextTexture:Hide()
+        end
+
+        if PedroMapDB.enabled then
+            animationFrame:Show()
+            PlayAddonMusic()
+        else
+            animationFrame:Hide()
+        end
+
+        UpdateButtonPosition()
+
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.1, SetupAnimationFrame)
+        end
+        SetupAnimationFrame()
+
+        self:UnregisterEvent("ADDON_LOADED")
     end
 end)
