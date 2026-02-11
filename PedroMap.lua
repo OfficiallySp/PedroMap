@@ -17,6 +17,8 @@ local CONFIG = {
     FRAME_COUNT = 693,
     ANIMATION_SPEED = 0.04,
     MINIMAP_BUTTON_SIZE = 31,
+    -- 1 = solid, 0.5–0.9 = semi-transparent
+    ANIMATION_ALPHA = 1,
     -- Texture aspect ratio (frame000.tga is 640x360)
     TEX_WIDTH = 640,
     TEX_HEIGHT = 360,
@@ -109,7 +111,6 @@ tex1:SetAllPoints(animationFrame)
 
 local tex2 = animationFrame:CreateTexture(nil, "OVERLAY")
 tex2:SetAllPoints(animationFrame)
-tex2:SetAlpha(0)
 
 activeTexture = tex1
 nextTexture = tex2
@@ -127,21 +128,29 @@ updateFrame:SetScript("OnUpdate", function(_, elapsed)
 
     PlayAddonMusic()
 
-    -- Swap textures on frame change
+    -- Swap textures on frame change (show before hide to avoid flicker)
     if nextFrameIndex then
-        activeTexture:Hide()
+        nextTexture:SetAlpha(CONFIG.ANIMATION_ALPHA)
         nextTexture:Show()
+        activeTexture:Hide()
         activeTexture, nextTexture = nextTexture, activeTexture
         nextFrameIndex = nil
     end
 
     elapsedTime = elapsedTime + elapsed
-    if elapsedTime >= CONFIG.ANIMATION_SPEED and #texturePaths > 0 then
-        currentFrame = (currentFrame % #texturePaths) + 1
-        nextTexture:SetTexture(texturePaths[currentFrame])
-        nextTexture:Hide()
-        nextFrameIndex = currentFrame
-        elapsedTime = elapsedTime - CONFIG.ANIMATION_SPEED
+    if #texturePaths > 0 then
+        local advanced = false
+        -- Catch up: advance through all elapsed frames at low framerates
+        while elapsedTime >= CONFIG.ANIMATION_SPEED do
+            currentFrame = (currentFrame % #texturePaths) + 1
+            elapsedTime = elapsedTime - CONFIG.ANIMATION_SPEED
+            advanced = true
+        end
+        if advanced then
+            nextTexture:SetTexture(texturePaths[currentFrame])
+            nextTexture:Hide()
+            nextFrameIndex = currentFrame
+        end
     end
 end)
 
@@ -217,6 +226,7 @@ btn:SetScript("OnClick", function(self, button)
             if #texturePaths > 0 then
                 currentFrame = 1
                 activeTexture:SetTexture(texturePaths[1])
+                activeTexture:SetAlpha(CONFIG.ANIMATION_ALPHA)
                 activeTexture:Show()
                 nextTexture:SetTexture(texturePaths[2] or texturePaths[1])
                 nextTexture:Hide()
@@ -243,6 +253,7 @@ PedroMap:SetScript("OnEvent", function(self, event, name)
 
         if #texturePaths > 0 then
             activeTexture:SetTexture(texturePaths[1])
+            activeTexture:SetAlpha(CONFIG.ANIMATION_ALPHA)
             activeTexture:Show()
             nextTexture:SetTexture(texturePaths[2] or texturePaths[1])
             nextTexture:Hide()
